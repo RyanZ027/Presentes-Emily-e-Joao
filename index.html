@@ -211,6 +211,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #globalLoader { position: fixed; inset: 0; background: var(--bg); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #setupInstructions { max-width: 500px; margin-top: 20px; text-align: left; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 12px; border: 1px solid var(--danger); display: none; }
   </style>
 </head>
 <body>
@@ -226,9 +227,26 @@
         <div class="brand-text-sub" style="font-size: 14px; letter-spacing: 8px;">Apostas</div>
       </div>
     </div>
-    <div class="flex-center" style="color: var(--muted); font-size: 14px;">
+    <div class="flex-center" id="loadingText" style="color: var(--muted); font-size: 14px;">
       <div class="loading-spinner" style="width: 18px; height: 18px; margin: 0; border-width: 2px;"></div>
-      Conectando ao servidor...
+      Conectando ao Supabase...
+    </div>
+    
+    <!-- Tela de Erro / Instruções de Configuração Supabase -->
+    <div id="setupInstructions">
+        <h3 style="color: var(--danger); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">⚠️ Banco de Dados Não Configurado</h3>
+        <p style="color: var(--text); font-size: 14px; line-height: 1.5; margin-bottom: 12px;">Para fazer o seu site funcionar 100% grátis e sem cartão de crédito, precisa configurar a sua conta no <b>Supabase</b>.</p>
+        <ol style="color: var(--muted); font-size: 13px; line-height: 1.6; margin-left: 20px; margin-bottom: 16px;">
+            <li>Vá a <b>supabase.com</b> e crie um projeto novo.</li>
+            <li>No menu esquerdo, vá a <b>Project Settings > API</b> e copie a sua <b>URL</b> e <b>anon key</b>.</li>
+            <li>Cole essas chaves no código-fonte deste ficheiro <span class="mono">(linha ~520)</span>.</li>
+            <li>Vá a <b>SQL Editor</b>, crie uma "New Query", cole o código abaixo e clique em Run:</li>
+        </ol>
+        <code style="background: #000; padding: 12px; border-radius: 8px; display: block; font-size: 12px; color: var(--success); overflow-x: auto; white-space: pre;">create table cpr_users (id text primary key, data jsonb);
+create table cpr_matches (id text primary key, data jsonb);
+create table cpr_queue (id text primary key, data jsonb);
+create table cpr_chat (id text primary key, data jsonb);
+alter publication supabase_realtime add table cpr_users, cpr_matches, cpr_queue, cpr_chat;</code>
     </div>
   </div>
 
@@ -800,53 +818,21 @@
     </div>
   </div>
 
-  <!-- FIREBASE & LOGIC SCRIPT -->
+  <!-- SUPABASE & LOGIC SCRIPT -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm';
 
-    // --- Firebase Init ---
-    let firebaseConfig = {};
-    if (typeof __firebase_config !== 'undefined') {
-        // Ambiente de teste provisório
-        firebaseConfig = JSON.parse(__firebase_config);
-    } else {
-        // === SEU AMBIENTE DE PRODUÇÃO (VERCEL/GITHUB) ===
-        firebaseConfig = {
-            apiKey: "AIzaSyAWMM4xDgoTLnNioGT3qegpEC6AiVOGb_g",
-            authDomain: "cprapostas.firebaseapp.com",
-            projectId: "cprapostas",
-            storageBucket: "cprapostas.firebasestorage.app",
-            messagingSenderId: "431606302745",
-            appId: "1:431606302745:web:72bff59d075caefee50288",
-            measurementId: "G-VQ4DVMFYZH"
-        };
-    }
+    // --- SUPABASE CONFIG ---
+    // COLOQUE A SUA URL E A SUA ANON KEY ABAIXO:
+    const SUPABASE_URL = "https://limngioreodlzaqjnuyl.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpbW5naW9yZW9kbHphcWpudXlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NDcxMjksImV4cCI6MjA4ODIyMzEyOX0.AJMFUyCjqL1ZwZUiK4woOb9RBuso9mwHh0Hn9cNiywg";
 
-    let app, auth, db;
+    let supabase;
     try {
-        app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
+        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch(e) {
-        console.error("Erro no Firebase:", e);
-        document.getElementById('globalLoader').innerHTML = `
-            <div style="text-align:center; padding:20px;">
-                <h2 style="color: var(--danger); font-size: 24px;">⚠️ Banco de Dados Ausente</h2>
-                <p style="color: var(--muted); margin-top:10px; font-size: 14px; max-width: 400px;">
-                    Você está rodando na Vercel/GitHub. Para o site funcionar, você deve criar um banco no Firebase e colar suas chaves no arquivo HTML.
-                </p>
-            </div>
-        `;
-        throw e;
+        console.error("Supabase Error:", e);
     }
-
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'cpr-apostas-default';
-    
-    // Helpers paths Firestore (Sempre Public para app colaborativo)
-    const getDocRef = (coll, docId) => doc(db, 'artifacts', appId, 'public', 'data', coll, docId);
-    const getCollRef = (coll) => collection(db, 'artifacts', appId, 'public', 'data', coll);
 
     // --- State Global ---
     const state = { users: [], matches: [], queue: [], chat: [] };
@@ -896,8 +882,11 @@
     };
 
     window.customConfirm = (msg, onConfirm, title="Confirmação") => {
-      document.getElementById('customConfirmTitle').innerText = title;
-      document.getElementById('customConfirmMsg').innerText = msg;
+      const elTitle = document.getElementById('customConfirmTitle');
+      const elMsg = document.getElementById('customConfirmMsg');
+      if (elTitle) elTitle.innerText = title;
+      if (elMsg) elMsg.innerText = msg;
+      
       const modal = document.getElementById('modalCustomConfirm');
       const btnOk = document.getElementById('btnCustomConfirmOk');
       if (btnOk && modal) {
@@ -908,74 +897,94 @@
       }
     };
 
-    // --- Firebase Auth & Sync ---
-    async function initApp() {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (e) {
-        console.error("Auth error:", e);
-        document.getElementById('globalLoader').innerHTML = `
-            <div style="text-align:center; padding:20px;">
-                <h2 style="color: var(--danger); font-size: 20px;">⚠️ Erro de Autenticação</h2>
-                <p style="color: var(--muted); margin-top:10px; font-size: 14px;">
-                    Ative o método de login <b>"Anônimo"</b> no painel Authentication do seu Firebase.
-                </p>
-            </div>
-        `;
-      }
+    // --- DB Wrappers Supabase ---
+    async function setDocSupabase(coll, docId, docData) {
+        if(!SUPABASE_URL || SUPABASE_URL === "COLE_SUA_URL_AQUI") return;
+        const { error } = await supabase.from('cpr_' + coll).upsert({ id: docId, data: docData });
+        if(error) console.error("Upsert Error:", error);
+    }
+    
+    async function deleteDocSupabase(coll, docId) {
+        if(!SUPABASE_URL || SUPABASE_URL === "COLE_SUA_URL_AQUI") return;
+        const { error } = await supabase.from('cpr_' + coll).delete().eq('id', docId);
+        if(error) console.error("Delete Error:", error);
     }
 
-    onAuthStateChanged(auth, (user) => {
-      if(user) setupFirestoreListeners();
-    });
+    // --- App Init ---
+    function initApp() {
+        if (!SUPABASE_URL || SUPABASE_URL === "COLE_SUA_URL_AQUI" || !SUPABASE_URL.startsWith('http')) {
+            const loaderText = document.getElementById('loadingText');
+            if(loaderText) loaderText.classList.add('hidden');
+            const instructions = document.getElementById('setupInstructions');
+            if(instructions) instructions.style.display = 'block';
+            return;
+        }
+        setupSupabaseListeners();
+    }
 
-    function setupFirestoreListeners() {
+    function setupSupabaseListeners() {
       const collections = ['users', 'matches', 'queue', 'chat'];
       let loadedCount = 0;
 
-      collections.forEach(coll => {
-        onSnapshot(getCollRef(coll), (snap) => {
-          state[coll] = snap.docs.map(d => ({...d.data(), _docId: d.id}));
-          
-          if(!initialized) {
-            loadedCount++;
-            if(loadedCount === collections.length) {
-              initialized = true;
-              const loader = document.getElementById('globalLoader');
-              if(loader) loader.classList.add('hidden');
-              const navbar = document.getElementById('mainNavbar');
-              if(navbar) navbar.classList.remove('hidden');
-              const mainCont = document.getElementById('mainContainer');
-              if(mainCont) mainCont.classList.remove('hidden');
-              
-              checkAdminExists();
-              syncCurrentUser();
-              
-              const initialHash = window.location.hash.replace('#', '') || 'home';
-              window.switchView(initialHash);
-            }
-          } else {
+      collections.forEach(async (coll) => {
+        const tableName = 'cpr_' + coll;
+        
+        // 1. Initial Fetch
+        const { data, error } = await supabase.from(tableName).select('data');
+        if(!error && data) {
+            state[coll] = data.map(d => d.data);
+        } else {
+            console.error(`Erro ao carregar ${tableName}:`, error);
+        }
+
+        loadedCount++;
+        if(loadedCount === collections.length && !initialized) {
+            initialized = true;
+            const loader = document.getElementById('globalLoader');
+            if(loader) loader.classList.add('hidden');
+            const navbar = document.getElementById('mainNavbar');
+            if(navbar) navbar.classList.remove('hidden');
+            const mainCont = document.getElementById('mainContainer');
+            if(mainCont) mainCont.classList.remove('hidden');
+            
+            checkAdminExists();
             syncCurrentUser();
-            renderApp();
-          }
-        }, (err) => console.error("Firestore Listen Error:", err));
+            
+            const initialHash = window.location.hash.replace('#', '') || 'home';
+            window.switchView(initialHash);
+        }
+
+        // 2. Realtime Subscription
+        supabase.channel('public:' + tableName)
+        .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, payload => {
+            if(payload.eventType === 'INSERT') {
+                const exists = state[coll].find(x => x.id === payload.new.data.id);
+                if(!exists) state[coll].push(payload.new.data);
+            } else if (payload.eventType === 'UPDATE') {
+                const idx = state[coll].findIndex(x => x.id === payload.new.data.id);
+                if(idx !== -1) state[coll][idx] = payload.new.data;
+                else state[coll].push(payload.new.data);
+            } else if (payload.eventType === 'DELETE') {
+                state[coll] = state[coll].filter(x => x.id !== payload.old.id);
+            }
+            if(initialized) {
+                syncCurrentUser();
+                renderApp();
+            }
+        }).subscribe();
       });
     }
 
     async function checkAdminExists() {
-      // Create ADM01 to ADM11 if they don't exist
       for(let i=1; i<=11; i++){
           let admEmail = `ADM${i.toString().padStart(2, '0')}`;
           if(!state.users.some(u => u.email === admEmail)) {
+            const newId = "u_admin_" + i;
             const adminData = {
-              id: "u_admin_" + i, nick: "Master " + i, email: admEmail, pass: "@Master01", role: "admin", plan: "vip_premium",
+              id: newId, nick: "Master " + i, email: admEmail, pass: "@Master01", role: "admin", plan: "vip_premium",
               ffid: null, isVerified: false, isBanned: false, stats: { pts: 0, w: 0, l: 0, streak: 0, balance: 0, betTotal: 0 }
             };
-            await setDoc(getDocRef('users', adminData.id), adminData);
+            await setDocSupabase('users', newId, adminData);
           }
       }
     }
@@ -1005,7 +1014,7 @@
             currentUser.stats.privUsage = { month: currentMonth, count: 0 };
         }
         currentUser.stats.privUsage.count++;
-        await setDoc(getDocRef('users', currentUser.id), currentUser);
+        await setDocSupabase('users', currentUser.id, currentUser);
         return true;
     }
 
@@ -1013,7 +1022,6 @@
     function renderApp() {
       const hash = window.location.hash.replace('#', '') || 'home';
       
-      // Execute all view renders safely to avoid mismatch bugs
       renderHome();
       renderPlanos();
       renderPerfil();
@@ -1140,7 +1148,7 @@
         stats: { pts: 0, w: 0, l: 0, streak: 0, balance: 0, betTotal: 0, privUsage: { month: new Date().toISOString().slice(0,7), count: 0 } }
       };
       
-      await setDoc(getDocRef('users', newId), newUser);
+      await setDocSupabase('users', newId, newUser);
       sessionStorage.setItem("loggedUserId", newId);
       syncCurrentUser();
       window.closeAuthModal();
@@ -1154,7 +1162,7 @@
     };
 
     // --- PLANOS VIP ---
-    function renderPlanos() { /* static */ }
+    function renderPlanos() { }
     window.openBuyVipModal = (planId, price) => {
         if(!currentUser) return window.openAuthModal('login');
         if(currentUser.plan === planId) return window.customAlert("Você já possui este plano ativo!");
@@ -1257,7 +1265,7 @@
         currentUser.ffAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${ffid}&backgroundColor=eab308`;
         currentUser.isVerified = true;
         
-        await setDoc(getDocRef('users', currentUser.id), currentUser);
+        await setDocSupabase('users', currentUser.id, currentUser);
         if(btn) { btn.innerText = "Buscar Conta"; btn.disabled = false; }
         window.customAlert("Conta vinculada com sucesso!", "Sucesso");
       }, 1000);
@@ -1342,8 +1350,8 @@
 
        const code = "SALA-" + Math.random().toString(36).substr(2, 4).toUpperCase();
        const qId = uid();
-       await setDoc(getDocRef('queue', qId), {
-          userId: currentUser.id, tier: code, pix, time: Date.now(), maxPlayers: size, isPrivate: true
+       await setDocSupabase('queue', qId, {
+          id: qId, userId: currentUser.id, tier: code, pix, time: Date.now(), maxPlayers: size, isPrivate: true
        });
        
        window.closePrivateModal();
@@ -1366,8 +1374,8 @@
        if(roomPlayers.length >= roomInfo.maxPlayers) return window.customAlert("Esta sala já está cheia!");
        
        const qId = uid();
-       await setDoc(getDocRef('queue', qId), {
-          userId: currentUser.id, tier: code, pix: roomInfo.pix, time: Date.now(), maxPlayers: roomInfo.maxPlayers, isPrivate: true
+       await setDocSupabase('queue', qId, {
+          id: qId, userId: currentUser.id, tier: code, pix: roomInfo.pix, time: Date.now(), maxPlayers: roomInfo.maxPlayers, isPrivate: true
        });
        
        window.closePrivateModal();
@@ -1452,7 +1460,7 @@
       
       if(myQueue) {
         // Sair
-        await deleteDoc(getDocRef('queue', myQueue._docId));
+        await deleteDocSupabase('queue', myQueue.id);
         window.selectQueueTier('iniciante'); 
       } else {
         const pts = currentUser.stats.pts || 0;
@@ -1471,8 +1479,9 @@
         if(uPlan === 'vip_pro') timeModifier -= 50000;
         if(uPlan === 'vip_basic') timeModifier -= 10000;
 
-        await setDoc(getDocRef('queue', uid()), { 
-            userId: currentUser.id, tier: currentQueueTier, pix: pixVal, time: timeModifier, maxPlayers: 8, isPrivate: false 
+        const qId = uid();
+        await setDocSupabase('queue', qId, { 
+            id: qId, userId: currentUser.id, tier: currentQueueTier, pix: pixVal, time: timeModifier, maxPlayers: 8, isPrivate: false 
         });
         checkMatchmaking();
       }
@@ -1488,9 +1497,11 @@
         id: fakeId, nick: "Bot_" + Math.floor(Math.random()*100), email: "bot@bot", role: "user", plan: "free", ffid: null, isVerified: false, isBanned: false,
         stats: { pts: botPts, w:0, l:0, streak:0, balance:0, betTotal:0 }
       };
-      await setDoc(getDocRef('users', fakeId), botUser);
-      await setDoc(getDocRef('queue', uid()), { 
-        userId: fakeId, tier: myQueue.tier, pix: myQueue.pix, time: Date.now(), maxPlayers: myQueue.maxPlayers || 8, isPrivate: myQueue.isPrivate || false
+      await setDocSupabase('users', fakeId, botUser);
+      
+      const qId = uid();
+      await setDocSupabase('queue', qId, { 
+        id: qId, userId: fakeId, tier: myQueue.tier, pix: myQueue.pix, time: Date.now(), maxPlayers: myQueue.maxPlayers || 8, isPrivate: myQueue.isPrivate || false
       });
       checkMatchmaking();
     };
@@ -1534,15 +1545,15 @@
             scoreA: null, scoreB: null, winner: null 
           };
 
-          await setDoc(getDocRef('matches', matchId), matchObj);
+          await setDocSupabase('matches', matchId, matchObj);
           
           for(const p of playersToMatch) {
-            await deleteDoc(getDocRef('queue', p._docId));
+            await deleteDocSupabase('queue', p.id);
           }
 
           const modeStr = teamA.length + "x" + teamB.length;
           const chatObj = { id: uid(), userId: "system", nick: "SISTEMA", tier: matchObj.tier, text: `🔥 Partida ${matchObj.tier.toUpperCase()} (${modeStr}) formada (Pot Total: ${money(matchObj.pixValue*2)})! Verifiquem a aba Partidas.`, time: Date.now() };
-          await setDoc(getDocRef('chat', chatObj.id), chatObj);
+          await setDocSupabase('chat', chatObj.id, chatObj);
 
           if(playersToMatch.find(p => p.userId === currentUser?.id)) {
             window.customAlert("SALA ENCONTRADA E BALANCEADA! Vá para a aba partidas realizar o pagamento.", "Sala Pronta");
@@ -1583,7 +1594,7 @@
       
       const chatObj = { id: uid(), userId: currentUser.id, nick: getUserNick(currentUser), tier: currentQueueTier, text, time: Date.now() };
       inp.value = '';
-      await setDoc(getDocRef('chat', chatObj.id), chatObj);
+      await setDocSupabase('chat', chatObj.id, chatObj);
     };
 
     // --- PARTIDAS E RESULTADOS ---
@@ -1653,7 +1664,7 @@
     window.adminConfirmPix = (matchId) => {
       window.customConfirm("Confirmar recebimento de todos os PIX? A partida será iniciada!", async () => {
         const m = state.matches.find(x => x.id === matchId);
-        if(m) { m.status = 'active'; await setDoc(getDocRef('matches', m.id), m); window.customAlert("Partida Iniciada!", "Sucesso"); }
+        if(m) { m.status = 'active'; await setDocSupabase('matches', m.id, m); window.customAlert("Partida Iniciada!", "Sucesso"); }
       });
     };
 
@@ -1681,7 +1692,7 @@
       const wIds = m.winner === 'A' ? m.teamA : m.teamB;
       const lIds = m.winner === 'A' ? m.teamB : m.teamA;
 
-      await setDoc(getDocRef('matches', m.id), m);
+      await setDocSupabase('matches', m.id, m);
 
       // Calculation of Team ELO Averages to distribute points
       let ptsA = 0; let ptsB = 0;
@@ -1699,15 +1710,15 @@
 
       for(let id of wIds) {
         let u = state.users.find(x => x.id === id);
-        if(u) { u.stats.pts = (u.stats.pts||0)+gain; u.stats.w+=1; u.stats.streak=u.stats.streak>=0?u.stats.streak+1:1; u.stats.balance+=m.pixValue; u.stats.betTotal+=m.pixValue; await setDoc(getDocRef('users', u.id), u); }
+        if(u) { u.stats.pts = (u.stats.pts||0)+gain; u.stats.w+=1; u.stats.streak=u.stats.streak>=0?u.stats.streak+1:1; u.stats.balance+=m.pixValue; u.stats.betTotal+=m.pixValue; await setDocSupabase('users', u.id, u); }
       }
       for(let id of lIds) {
         let u = state.users.find(x => x.id === id);
-        if(u) { u.stats.pts = Math.max(0, (u.stats.pts||0)-loss); u.stats.l+=1; u.stats.streak=u.stats.streak<=0?u.stats.streak-1:-1; u.stats.balance-=m.pixValue; u.stats.betTotal+=m.pixValue; await setDoc(getDocRef('users', u.id), u); }
+        if(u) { u.stats.pts = Math.max(0, (u.stats.pts||0)-loss); u.stats.l+=1; u.stats.streak=u.stats.streak<=0?u.stats.streak-1:-1; u.stats.balance-=m.pixValue; u.stats.betTotal+=m.pixValue; await setDocSupabase('users', u.id, u); }
       }
 
       const chatObj = { id: uid(), userId: "system", nick: "SISTEMA", tier: m.tier, text: `🏁 Partida Finalizada! Time ${m.winner} vence (+${gain} Pts).`, time: Date.now() };
-      await setDoc(getDocRef('chat', chatObj.id), chatObj);
+      await setDocSupabase('chat', chatObj.id, chatObj);
       window.closeMatchModal();
     };
 
@@ -1796,26 +1807,26 @@
 
     window.adminClearQueue = () => {
       window.customConfirm("Esvaziar todas as filas ativas?", async () => {
-        for(let q of state.queue) await deleteDoc(getDocRef('queue', q._docId));
+        for(let q of state.queue) await deleteDocSupabase('queue', q.id);
         window.customAlert("Filas limpas com sucesso.");
       });
     };
 
     window.adminChangePlan = async (uId, newPlan) => {
         const u = state.users.find(x => x.id === uId);
-        if(u) { u.plan = newPlan; await setDoc(getDocRef('users', u.id), u); }
+        if(u) { u.plan = newPlan; await setDocSupabase('users', u.id, u); }
     };
 
     window.adminToggleBan = async (uId) => {
         const u = state.users.find(x => x.id === uId);
-        if(u) { u.isBanned = !u.isBanned; await setDoc(getDocRef('users', u.id), u); }
+        if(u) { u.isBanned = !u.isBanned; await setDocSupabase('users', u.id, u); }
     };
 
     window.adminResetSeason = () => {
       window.customConfirm("ATENÇÃO: Deseja realizar o Soft Reset? Isso multiplicará os pontos de TODOS os jogadores por 0.75 e iniciará uma nova temporada.", async () => {
           for(let u of state.users.filter(x=>x.role!=='admin')) {
               u.stats.pts = Math.floor((u.stats.pts || 0) * 0.75);
-              await setDoc(getDocRef('users', u._docId), u);
+              await setDocSupabase('users', u.id, u);
           }
           window.customAlert("Temporada Resetada. Novos pontos aplicados.");
       }, "Reset de Temporada");
@@ -1823,10 +1834,10 @@
 
     window.nukeDB = () => {
       window.customConfirm("Apagar TUDO (Partidas, Usuários e Chat)? Isso é irreversível.", async () => {
-        for(let u of state.users.filter(x=>x.role!=='admin')) await deleteDoc(getDocRef('users', u._docId));
-        for(let m of state.matches) await deleteDoc(getDocRef('matches', m._docId));
-        for(let c of state.chat) await deleteDoc(getDocRef('chat', c._docId));
-        for(let q of state.queue) await deleteDoc(getDocRef('queue', q._docId));
+        for(let u of state.users.filter(x=>x.role!=='admin')) await deleteDocSupabase('users', u.id);
+        for(let m of state.matches) await deleteDocSupabase('matches', m.id);
+        for(let c of state.chat) await deleteDocSupabase('chat', c.id);
+        for(let q of state.queue) await deleteDocSupabase('queue', q.id);
         window.customAlert("Banco de dados resetado com sucesso.");
       }, "Zerar Banco de Dados");
     };
