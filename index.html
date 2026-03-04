@@ -807,10 +807,41 @@
     import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // --- Firebase Init ---
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    let firebaseConfig = {};
+    if (typeof __firebase_config !== 'undefined') {
+        // Ambiente de teste provisório
+        firebaseConfig = JSON.parse(__firebase_config);
+    } else {
+        // === SEU AMBIENTE DE PRODUÇÃO (VERCEL/GITHUB) ===
+        firebaseConfig = {
+            apiKey: "AIzaSyAWMM4xDgoTLnNioGT3qegpEC6AiVOGb_g",
+            authDomain: "cprapostas.firebaseapp.com",
+            projectId: "cprapostas",
+            storageBucket: "cprapostas.firebasestorage.app",
+            messagingSenderId: "431606302745",
+            appId: "1:431606302745:web:72bff59d075caefee50288",
+            measurementId: "G-VQ4DVMFYZH"
+        };
+    }
+
+    let app, auth, db;
+    try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+    } catch(e) {
+        console.error("Erro no Firebase:", e);
+        document.getElementById('globalLoader').innerHTML = `
+            <div style="text-align:center; padding:20px;">
+                <h2 style="color: var(--danger); font-size: 24px;">⚠️ Banco de Dados Ausente</h2>
+                <p style="color: var(--muted); margin-top:10px; font-size: 14px; max-width: 400px;">
+                    Você está rodando na Vercel/GitHub. Para o site funcionar, você deve criar um banco no Firebase e colar suas chaves no arquivo HTML.
+                </p>
+            </div>
+        `;
+        throw e;
+    }
+
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'cpr-apostas-default';
     
     // Helpers paths Firestore (Sempre Public para app colaborativo)
@@ -865,11 +896,8 @@
     };
 
     window.customConfirm = (msg, onConfirm, title="Confirmação") => {
-      const elTitle = document.getElementById('customConfirmTitle');
-      const elMsg = document.getElementById('customConfirmMsg');
-      if (elTitle) elTitle.innerText = title;
-      if (elMsg) elMsg.innerText = msg;
-      
+      document.getElementById('customConfirmTitle').innerText = title;
+      document.getElementById('customConfirmMsg').innerText = msg;
       const modal = document.getElementById('modalCustomConfirm');
       const btnOk = document.getElementById('btnCustomConfirmOk');
       if (btnOk && modal) {
@@ -890,6 +918,14 @@
         }
       } catch (e) {
         console.error("Auth error:", e);
+        document.getElementById('globalLoader').innerHTML = `
+            <div style="text-align:center; padding:20px;">
+                <h2 style="color: var(--danger); font-size: 20px;">⚠️ Erro de Autenticação</h2>
+                <p style="color: var(--muted); margin-top:10px; font-size: 14px;">
+                    Ative o método de login <b>"Anônimo"</b> no painel Authentication do seu Firebase.
+                </p>
+            </div>
+        `;
       }
     }
 
