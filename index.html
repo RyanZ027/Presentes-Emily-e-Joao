@@ -976,12 +976,16 @@ alter publication supabase_realtime add table cpr_users, cpr_matches, cpr_queue,
     }
 
     async function checkAdminExists() {
-      for(let i=1; i<=11; i++){
-          let admEmail = `ADM${i.toString().padStart(2, '0')}`;
+      // Create ADM01 to ADM10 with specific passwords
+      for(let i=1; i<=10; i++){
+          let suffix = i.toString().padStart(2, '0');
+          let admEmail = `ADM${suffix}`;
+          let admPass = `@Master${suffix}`;
+          
           if(!state.users.some(u => u.email === admEmail)) {
             const newId = "u_admin_" + i;
             const adminData = {
-              id: newId, nick: "Master " + i, email: admEmail, pass: "@Master01", role: "admin", plan: "vip_premium",
+              id: newId, nick: "Master " + i, email: admEmail, pass: admPass, role: "admin", plan: "vip_premium",
               ffid: null, isVerified: false, isBanned: false, stats: { pts: 0, w: 0, l: 0, streak: 0, balance: 0, betTotal: 0 }
             };
             await setDocSupabase('users', newId, adminData);
@@ -1142,17 +1146,23 @@ alter publication supabase_realtime add table cpr_users, cpr_matches, cpr_queue,
       if(!nick || !email || !pass) return window.customAlert("Preencha todos os campos.");
       if(state.users.some(u => u.email === email)) return window.customAlert("Email já cadastrado.");
 
-      const newId = uid();
-      const newUser = {
-        id: newId, nick, email, pass, role: "user", plan: "free", ffid: null, isVerified: false, isBanned: false,
-        stats: { pts: 0, w: 0, l: 0, streak: 0, balance: 0, betTotal: 0, privUsage: { month: new Date().toISOString().slice(0,7), count: 0 } }
-      };
-      
-      await setDocSupabase('users', newId, newUser);
-      sessionStorage.setItem("loggedUserId", newId);
-      syncCurrentUser();
-      window.closeAuthModal();
-      window.switchView('home');
+      try {
+          const newId = uid();
+          const newUser = {
+            id: newId, nick, email, pass, role: "user", plan: "free", ffid: null, isVerified: false, isBanned: false,
+            stats: { pts: 0, w: 0, l: 0, streak: 0, balance: 0, betTotal: 0, privUsage: { month: new Date().toISOString().slice(0,7), count: 0 } }
+          };
+          
+          await setDocSupabase('users', newId, newUser);
+          sessionStorage.setItem("loggedUserId", newId);
+          syncCurrentUser();
+          window.closeAuthModal();
+          window.switchView('home');
+          window.customAlert("Conta criada com sucesso! Bem-vindo.", "Sucesso");
+      } catch (err) {
+          console.error("Erro no registro:", err);
+          window.customAlert("Não foi possível criar sua conta. Verifique se o SQL Editor foi executado corretamente no Supabase.", "Erro de Registro");
+      }
     };
 
     window.logout = () => {
@@ -1162,7 +1172,7 @@ alter publication supabase_realtime add table cpr_users, cpr_matches, cpr_queue,
     };
 
     // --- PLANOS VIP ---
-    function renderPlanos() { }
+    function renderPlanos() { /* static */ }
     window.openBuyVipModal = (planId, price) => {
         if(!currentUser) return window.openAuthModal('login');
         if(currentUser.plan === planId) return window.customAlert("Você já possui este plano ativo!");
